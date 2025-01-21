@@ -13,7 +13,7 @@ import searchengine.services.StatisticsService;
 
 @RequiredArgsConstructor
 @RestController
-@RequestMapping("/api")
+@RequestMapping("/api/v1")
 public class ApiController {
 
     private final StatisticsService statisticsService;
