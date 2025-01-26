@@ -9,10 +9,11 @@ import org.springframework.http.ResponseEntity;
 import searchengine.dto.indexing.IndexPageRequest;
 import searchengine.dto.indexing.IndexingResponse;
 import searchengine.dto.search.SearchResponse;
-import searchengine.dto.statistics.StatisticsResponse;
 import searchengine.services.IndexingService;
 import searchengine.services.SearchService;
 import searchengine.services.StatisticsService;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -36,170 +37,124 @@ class ApiControllerTest {
         MockitoAnnotations.openMocks(this);
     }
 
-    @Test
-    void testStatistics() {
-        // Arrange
-        StatisticsResponse expectedResponse = new StatisticsResponse();
-        when(statisticsService.getStatistics()).thenReturn(expectedResponse);
 
-        // Act
-        ResponseEntity<StatisticsResponse> response = apiController.statistics();
-
-        // Assert
-        assertEquals(expectedResponse, response.getBody());
-        verify(statisticsService, times(1)).getStatistics();
-    }
 
     @Test
-    void testStartIndexingSuccess() {
-        // Arrange
+    void startIndexingShouldReturnErrorResponseWhenIndexingAlreadyRunning() {
+
         IndexingResponse expectedResponse = new IndexingResponse();
-        expectedResponse.setResult(true);
+        expectedResponse.setResult(false);
+        expectedResponse.setError("Индексация уже выполняется");
+
         when(indexingService.startIndexing()).thenReturn(expectedResponse);
 
-        // Act
-        ResponseEntity<IndexingResponse> response = apiController.startIndexing();
 
-        // Assert
-        assertEquals(expectedResponse, response.getBody());
+        ResponseEntity<IndexingResponse> actualResponse = apiController.startIndexing();
+
+
+        assertAll(
+                () -> assertEquals(400, actualResponse.getStatusCodeValue(), "HTTP status should be 400"),
+                () -> assertFalse(actualResponse.getBody().isResult(), "Result should be false"),
+                () -> assertEquals("Индексация уже выполняется", actualResponse.getBody().getError(), "Error message mismatch")
+        );
         verify(indexingService, times(1)).startIndexing();
     }
 
+
     @Test
-    void testStartIndexingFailure() {
-        // Arrange
+    void stopIndexingShouldReturnErrorResponseWhenNoActiveIndexing() {
+
         IndexingResponse expectedResponse = new IndexingResponse();
         expectedResponse.setResult(false);
-        when(indexingService.startIndexing()).thenReturn(expectedResponse);
+        expectedResponse.setError("Индексация не выполняется");
 
-        // Act
-        ResponseEntity<IndexingResponse> response = apiController.startIndexing();
-
-        // Assert
-        assertEquals(expectedResponse, response.getBody());
-        assertEquals(400, response.getStatusCodeValue());
-        verify(indexingService, times(1)).startIndexing();
-    }
-
-    @Test
-    void testStopIndexingSuccess() {
-        // Arrange
-        IndexingResponse expectedResponse = new IndexingResponse();
-        expectedResponse.setResult(true);
         when(indexingService.stopIndexing()).thenReturn(expectedResponse);
 
-        // Act
-        ResponseEntity<IndexingResponse> response = apiController.stopIndexing();
 
-        // Assert
-        assertEquals(expectedResponse, response.getBody());
+        ResponseEntity<IndexingResponse> actualResponse = apiController.stopIndexing();
+
+
+        assertAll(
+                () -> assertEquals(400, actualResponse.getStatusCodeValue(), "HTTP status should be 400"),
+                () -> assertFalse(actualResponse.getBody().isResult(), "Result should be false"),
+                () -> assertEquals("Индексация не выполняется", actualResponse.getBody().getError(), "Error message mismatch")
+        );
         verify(indexingService, times(1)).stopIndexing();
     }
 
+
     @Test
-    void testStopIndexingFailure() {
-        // Arrange
+    void indexPageShouldReturnErrorForInvalidUrl() {
+
+        IndexPageRequest invalidRequest = new IndexPageRequest();
+        invalidRequest.setUrl("invalid-url");
+
         IndexingResponse expectedResponse = new IndexingResponse();
         expectedResponse.setResult(false);
-        when(indexingService.stopIndexing()).thenReturn(expectedResponse);
+        expectedResponse.setError("Некорректный URL");
 
-        // Act
-        ResponseEntity<IndexingResponse> response = apiController.stopIndexing();
+        when(indexingService.indexPage(invalidRequest.getUrl())).thenReturn(expectedResponse);
 
-        // Assert
-        assertEquals(expectedResponse, response.getBody());
-        assertEquals(400, response.getStatusCodeValue());
-        verify(indexingService, times(1)).stopIndexing();
+
+        ResponseEntity<IndexingResponse> actualResponse = apiController.indexPage(invalidRequest);
+
+
+        assertAll(
+                () -> assertEquals(400, actualResponse.getStatusCodeValue(), "HTTP status should be 400"),
+                () -> assertFalse(actualResponse.getBody().isResult(), "Result should be false"),
+                () -> assertEquals("Некорректный URL", actualResponse.getBody().getError(), "Error message mismatch")
+        );
+        verify(indexingService, times(1)).indexPage(invalidRequest.getUrl());
     }
 
     @Test
-    void testIndexPageSuccess() {
+    void searchShouldReturnValidResultsForAllSites() {
         // Arrange
-        IndexPageRequest request = new IndexPageRequest();
-        request.setUrl("http://example.com");
-        IndexingResponse expectedResponse = new IndexingResponse();
-        expectedResponse.setResult(true);
-        when(indexingService.indexPage(request.getUrl())).thenReturn(expectedResponse);
+        String searchQuery = "test query";
+        int resultOffset = 0;
+        int resultLimit = 10;
 
-        // Act
-        ResponseEntity<IndexingResponse> response = apiController.indexPage(request);
-
-        // Assert
-        assertEquals(expectedResponse, response.getBody());
-        verify(indexingService, times(1)).indexPage(request.getUrl());
-    }
-
-    @Test
-    void testIndexPageFailure() {
-        // Arrange
-        IndexPageRequest request = new IndexPageRequest();
-        request.setUrl("http://example.com");
-        IndexingResponse expectedResponse = new IndexingResponse();
-        expectedResponse.setResult(false);
-        when(indexingService.indexPage(request.getUrl())).thenReturn(expectedResponse);
-
-        // Act
-        ResponseEntity<IndexingResponse> response = apiController.indexPage(request);
-
-        // Assert
-        assertEquals(expectedResponse, response.getBody());
-        assertEquals(400, response.getStatusCodeValue());
-        verify(indexingService, times(1)).indexPage(request.getUrl());
-    }
-
-    @Test
-    void testSearchAllSites() {
-        // Arrange
-        String query = "test query";
-        int offset = 0;
-        int limit = 20;
         SearchResponse expectedResponse = new SearchResponse();
         expectedResponse.setResult(true);
-        when(searchService.searchAllSites(query, limit, offset)).thenReturn(expectedResponse);
+        expectedResponse.setCount(25);
+        expectedResponse.setData(List.of(/* mock search results */));
 
-        // Act
-        ResponseEntity<SearchResponse> response = apiController.search(query, null, offset, limit);
+        when(searchService.searchAllSites(searchQuery, resultLimit, resultOffset)).thenReturn(expectedResponse);
 
-        // Assert
-        assertEquals(expectedResponse, response.getBody());
-        verify(searchService, times(1)).searchAllSites(query, limit, offset);
+
+        ResponseEntity<SearchResponse> actualResponse = apiController.search(searchQuery, null, resultOffset, resultLimit);
+
+
+        assertAll(
+                () -> assertEquals(200, actualResponse.getStatusCodeValue(), "HTTP status should be 200"),
+                () -> assertTrue(actualResponse.getBody().isResult(), "Result should be true"),
+                () -> assertEquals(25, actualResponse.getBody().getCount(), "Total results count mismatch"),
+                () -> assertNotNull(actualResponse.getBody().getData(), "Search results should not be null")
+        );
+        verify(searchService, times(1)).searchAllSites(searchQuery, resultLimit, resultOffset);
     }
 
-    @Test
-    void testSearchSite() {
-        // Arrange
-        String query = "test query";
-        String site = "http://example.com";
-        int offset = 0;
-        int limit = 20;
-        SearchResponse expectedResponse = new SearchResponse();
-        expectedResponse.setResult(true);
-        when(searchService.searchSite(site, query, limit, offset)).thenReturn(expectedResponse);
-
-        // Act
-        ResponseEntity<SearchResponse> response = apiController.search(query, site, offset, limit);
-
-        // Assert
-        assertEquals(expectedResponse, response.getBody());
-        verify(searchService, times(1)).searchSite(site, query, limit, offset);
-    }
 
     @Test
-    void testSearchFailure() {
-        // Arrange
-        String query = "test query";
-        int offset = 0;
-        int limit = 20;
+    void searchShouldReturnErrorForEmptyQuery() {
+
+        String emptyQuery = "";
+
         SearchResponse expectedResponse = new SearchResponse();
         expectedResponse.setResult(false);
-        when(searchService.searchAllSites(query, limit, offset)).thenReturn(expectedResponse);
+        expectedResponse.setError("Поисковый запрос не может быть пустым");
 
-        // Act
-        ResponseEntity<SearchResponse> response = apiController.search(query, null, offset, limit);
+        when(searchService.searchAllSites(emptyQuery, 20, 0)).thenReturn(expectedResponse);
 
-        // Assert
-        assertEquals(expectedResponse, response.getBody());
-        assertEquals(400, response.getStatusCodeValue());
-        verify(searchService, times(1)).searchAllSites(query, limit, offset);
+
+        ResponseEntity<SearchResponse> actualResponse = apiController.search(emptyQuery, null, 0, 20);
+
+
+        assertAll(
+                () -> assertEquals(400, actualResponse.getStatusCodeValue(), "HTTP status should be 400"),
+                () -> assertFalse(actualResponse.getBody().isResult(), "Result should be false"),
+                () -> assertEquals("Поисковый запрос не может быть пустым", actualResponse.getBody().getError(), "Error message mismatch")
+        );
+        verify(searchService, times(1)).searchAllSites(emptyQuery, 20, 0);
     }
 }

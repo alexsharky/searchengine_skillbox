@@ -9,9 +9,9 @@ import searchengine.dto.statistics.StatisticsData;
 import searchengine.dto.statistics.StatisticsResponse;
 import searchengine.dto.statistics.TotalStatistics;
 import searchengine.model.*;
-import searchengine.model.repository.LemmaRepository;
-import searchengine.model.repository.PageRepository;
-import searchengine.model.repository.SiteRepository;
+import searchengine.repository.LemmaRepository;
+import searchengine.repository.PageRepository;
+import searchengine.repository.SiteRepository;
 
 import java.time.ZoneOffset;
 import java.util.ArrayList;

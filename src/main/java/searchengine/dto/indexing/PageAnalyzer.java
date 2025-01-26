@@ -16,10 +16,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import searchengine.config.SearchBot;
 import searchengine.model.*;
-import searchengine.model.repository.IndexRepository;
-import searchengine.model.repository.LemmaRepository;
-import searchengine.model.repository.PageRepository;
-import searchengine.model.repository.SiteRepository;
+import searchengine.repository.IndexRepository;
+import searchengine.repository.LemmaRepository;
+import searchengine.repository.PageRepository;
+import searchengine.repository.SiteRepository;
 import searchengine.services.LemmasFinder;
 
 import java.time.LocalDateTime;

@@ -3,7 +3,6 @@ package searchengine.services;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import lombok.val;
 import org.jsoup.Jsoup;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
@@ -11,9 +10,9 @@ import searchengine.config.SitesList;
 import searchengine.dto.search.SearchData;
 import searchengine.dto.search.SearchResponse;
 import searchengine.model.*;
-import searchengine.model.repository.IndexRepository;
-import searchengine.model.repository.LemmaRepository;
-import searchengine.model.repository.SiteRepository;
+import searchengine.repository.IndexRepository;
+import searchengine.repository.LemmaRepository;
+import searchengine.repository.SiteRepository;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -32,43 +31,40 @@ public class SearchServiceImpl implements SearchService {
     @Override
     public SearchResponse searchSite(@NonNull String siteUrl, @NonNull String query, int limit, int offset) {
         if (siteUrl.endsWith("/")) {
-
             siteUrl = siteUrl.substring(0, siteUrl.length() - 1);
         }
-        val url = siteUrl.toLowerCase();
+        var url = siteUrl.toLowerCase();
 
-        var notInSettings = sitesSettings.getSites().stream()
+        boolean notInSettings = sitesSettings.getSites().stream()
                 .map(searchengine.config.Site::getUrl)
                 .noneMatch(s -> s.equals(url));
         if (notInSettings) {
             return SearchResponse.builder().result(false).error("Сайт не указан в настройках индексации").build();
         }
 
-        var site = siteRepository.findByUrl(siteUrl);
+        Site site = siteRepository.findByUrl(siteUrl);
         if (site == null || site.getStatus() == IndexingStatus.INDEXING) {
-
             return SearchResponse.builder().result(false).error("Индексация сайта ещё не завершена").build();
         }
 
-        var sites = List.of(site);
+        List<Site> sites = List.of(site);
         return search(sites, query, limit, offset);
     }
 
     @Override
     public SearchResponse searchAllSites(@NonNull String query, int limit, int offset) {
-
-        var sitesInSettings = sitesSettings.getSites().stream()
+        List<String> sitesInSettings = sitesSettings.getSites().stream()
                 .map(searchengine.config.Site::getUrl)
                 .toList();
 
-        var sitesInDB = siteRepository.findByUrlIn(sitesInSettings);
+        List<Site> sitesInDB = siteRepository.findByUrlIn(sitesInSettings);
 
         if (sitesInSettings.size() != sitesInDB.size()) {
             return SearchResponse.builder().result(false).error("Индексация части сайтов из настроек не запускалась")
                     .build();
         }
 
-        var indexingInProcess = sitesInDB.stream()
+        boolean indexingInProcess = sitesInDB.stream()
                 .anyMatch(site -> site.getStatus() == IndexingStatus.INDEXING);
         if (indexingInProcess) {
             return SearchResponse.builder().result(false).error("Индексация части сайтов ещё не завершена").build();
@@ -88,24 +84,23 @@ public class SearchServiceImpl implements SearchService {
             return SearchResponse.builder().result(false).error("Параметр offset не может быть отрицательным").build();
         }
 
-        var lemmas = findLemmas(sites, query);
-
+        Map<Site, List<Lemma>> lemmas = findLemmas(sites, query);
         if (lemmas.isEmpty()) {
             return SearchResponse.builder().result(true).count(0).data(Collections.emptyList()).build();
         }
 
-        var siteUrls = sites.stream().map(Site::getUrl).distinct().toList();
+        List<String> siteUrls = sites.stream().map(Site::getUrl).distinct().toList();
         log.info("Начат поиск \"{}\" в списке сайтов: {}", query, siteUrls);
-        var start = System.currentTimeMillis();
+        long start = System.currentTimeMillis();
 
-        var absoluteRelevance = computeAbsoluteRelevance(lemmas);
-        var relativeRelevance = computeRelativeRelevance(absoluteRelevance);
+        Map<Page, Float> absoluteRelevance = computeAbsoluteRelevance(lemmas);
+        Map<Page, Float> relativeRelevance = computeRelativeRelevance(absoluteRelevance);
 
-        var lemmasFinder = applicationContext.getBean(LemmasFinder.class);
-        var lemmasNames = lemmasFinder.findLemmas(query).keySet();
-        var data = getSearchData(relativeRelevance, limit, offset, lemmasNames);
+        LemmasFinder lemmasFinder = applicationContext.getBean(LemmasFinder.class);
+        Set<String> lemmasNames = lemmasFinder.findLemmas(query).keySet();
+        List<SearchData> data = getSearchData(relativeRelevance, limit, offset, lemmasNames);
 
-        var foundCount = relativeRelevance.size();
+        int foundCount = relativeRelevance.size();
 
         log.info("Поиск \"{}\" выполнен за {} мс. Найдено результатов: {}. Список сайтов: {}.",
                 query, System.currentTimeMillis() - start, foundCount, siteUrls);
@@ -118,9 +113,9 @@ public class SearchServiceImpl implements SearchService {
             return Collections.emptyMap();
         }
 
-        var lemmasFinder = applicationContext.getBean(LemmasFinder.class);
-        var lemmasNames = lemmasFinder.findLemmas(query).keySet();
-        var lemmas = lemmaRepository.findBySiteInAndLemmaIn(sites, lemmasNames);
+        LemmasFinder lemmasFinder = applicationContext.getBean(LemmasFinder.class);
+        Set<String> lemmasNames = lemmasFinder.findLemmas(query).keySet();
+        List<Lemma> lemmas = lemmaRepository.findBySiteInAndLemmaIn(sites, lemmasNames);
 
         return lemmas.stream()
                 .collect(Collectors.groupingBy(Lemma::getSite))
@@ -130,19 +125,17 @@ public class SearchServiceImpl implements SearchService {
     }
 
     private Map<Page, Float> computeAbsoluteRelevance(Map<Site, List<Lemma>> lemmas) {
-
         if (lemmas.isEmpty()) {
             return Collections.emptyMap();
         }
 
         Map<Page, Float> relevance = new HashMap<>();
 
-        for (var siteLemmas : lemmas.values()) {
+        for (List<Lemma> siteLemmas : lemmas.values()) {
             if (siteLemmas.isEmpty()) {
                 continue;
             }
-            var tmpRelevance = computeAbsoluteRelevance(siteLemmas);
-
+            Map<Page, Float> tmpRelevance = computeAbsoluteRelevance(siteLemmas);
             relevance.putAll(tmpRelevance);
         }
 
@@ -156,12 +149,13 @@ public class SearchServiceImpl implements SearchService {
 
         lemmas.sort(Comparator.comparingInt(Lemma::getFrequency));
 
-        var relevance = indexRepository.findByLemma(lemmas.get(0))
+        Map<Page, Float> relevance = indexRepository.findByLemma(lemmas.get(0))
                 .stream()
                 .collect(Collectors.toMap(Index::getPage, Index::getRank));
 
         for (int i = 1; i < lemmas.size(); i++) {
-            var tmpRelevance = indexRepository.findByLemmaAndPageIn(lemmas.get(i), relevance.keySet())
+            Lemma currentLemma = lemmas.get(i);
+            Map<Page, Float> tmpRelevance = indexRepository.findByLemmaAndPageIn(currentLemma, relevance.keySet())
                     .stream()
                     .collect(Collectors.toMap(Index::getPage, Index::getRank));
 
@@ -169,8 +163,8 @@ public class SearchServiceImpl implements SearchService {
                 return tmpRelevance;
             }
 
-            for (var entry : tmpRelevance.entrySet()) {
-                var newValue = entry.getValue() + relevance.get(entry.getKey());
+            for (Map.Entry<Page, Float> entry : tmpRelevance.entrySet()) {
+                float newValue = entry.getValue() + relevance.get(entry.getKey());
                 entry.setValue(newValue);
             }
             relevance = tmpRelevance;
@@ -184,7 +178,7 @@ public class SearchServiceImpl implements SearchService {
             return Collections.emptyMap();
         }
 
-        var maxRelevance = absoluteRelevance.values().stream()
+        float maxRelevance = absoluteRelevance.values().stream()
                 .max(Float::compareTo)
                 .get();
 
@@ -194,34 +188,38 @@ public class SearchServiceImpl implements SearchService {
                         entry -> entry.getValue() / maxRelevance));
     }
 
-    private List<SearchData> getSearchData(@NonNull Map<Page, Float> relevance, int limit, int offset,
-                                           @NonNull Set<String> lemmas) {
+    private List<SearchData> getSearchData(
+            @NonNull Map<Page, Float> relevance,
+            int limit,
+            int offset,
+            @NonNull Set<String> lemmas
+    ) {
         if (relevance.isEmpty() || offset > (relevance.size() - 1) || lemmas.isEmpty() || limit <= 0 || offset < 0) {
             return Collections.emptyList();
         }
 
-        var sortedRelevance = relevance.entrySet().stream()
+        List<Map.Entry<Page, Float>> sortedRelevance = relevance.entrySet().stream()
                 .sorted(Collections.reverseOrder(Map.Entry.comparingByValue()))
                 .toList();
 
         List<SearchData> data = new ArrayList<>(limit);
-        var lemmasFinder = applicationContext.getBean(LemmasFinder.class);
+        LemmasFinder lemmasFinder = applicationContext.getBean(LemmasFinder.class);
 
-        var maxIndex = Math.min(offset + limit, relevance.size());
+        int maxIndex = Math.min(offset + limit, relevance.size());
         for (int i = offset; i < maxIndex; i++) {
-            var entry = sortedRelevance.get(i);
-            var page = entry.getKey();
-            var site = page.getSite();
+            Map.Entry<Page, Float> entry = sortedRelevance.get(i);
+            Page page = entry.getKey();
+            Site site = page.getSite();
 
-            var title = "";
-            var snippet = "";
+            String title = "";
+            String snippet = "";
             if (page.canBeParsed()) {
                 var document = Jsoup.parse(page.getContent());
                 title = document.title();
                 snippet = lemmasFinder.getSnippet(document.wholeText(), lemmas);
             }
 
-            var searchData = new SearchData();
+            SearchData searchData = new SearchData();
             searchData.setSite(site.getUrl());
             searchData.setSiteName(site.getName());
             searchData.setUri(page.getPath());
@@ -234,5 +232,4 @@ public class SearchServiceImpl implements SearchService {
 
         return data;
     }
-
 }

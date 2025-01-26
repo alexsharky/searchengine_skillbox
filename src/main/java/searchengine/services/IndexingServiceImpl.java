@@ -11,10 +11,10 @@ import searchengine.config.SitesList;
 import searchengine.dto.indexing.IndexingResponse;
 import searchengine.dto.indexing.PageAnalyzer;
 import searchengine.model.*;
-import searchengine.model.repository.IndexRepository;
-import searchengine.model.repository.LemmaRepository;
-import searchengine.model.repository.PageRepository;
-import searchengine.model.repository.SiteRepository;
+import searchengine.repository.IndexRepository;
+import searchengine.repository.LemmaRepository;
+import searchengine.repository.PageRepository;
+import searchengine.repository.SiteRepository;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
